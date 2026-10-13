@@ -11,6 +11,8 @@ private:
     std::vector<Cidade> cidades;
     std::vector<Individuo> individuos;
 
+    int quantidadeCidades;
+
 public:
 
 };

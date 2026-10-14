@@ -1,20 +1,49 @@
-#ifndef MUNDO_CPP
-#define MUNDO_CPP
+#ifndef MUNDO_HPP
+#define MUNDO_HPP
 
 #include "individuo.hpp"
 #include "cidade.hpp"
 
 #include <vector>
 
+// Dois cenários de distribuição de cidades, conforme enunciado.
+enum class DistribuicaoCidades {
+    Uniforme,   // Pontos uniformemente distribuídos
+    Circular    // Círculo de pontos (benchmark)
+};
+
 class Mundo {
 private:
     std::vector<Cidade> cidades;
-    std::vector<Individuo> individuos;
+    std::vector<std::vector<Individuo>> individuos;  // Bidimensional: [epoca][individuo]
 
     int quantidadeCidades;
+    int epocaAtual;
+
+    // Matriz de distâncias triangular inferior.
+    // distancias[i][j] com i > j armazena a distância euclidiana entre cidade i e cidade j.
+    // Acesse sempre via Distancia(i, j) para normalizar os índices automaticamente.
+    std::vector<std::vector<double>> distancias;
+
+    // Aloca as cidades conforme o cenário escolhido.
+    void GerarCidades(int quantidade, DistribuicaoCidades distribuicao);
+
+    // Preenche a matriz triangular inferior com as distâncias euclidianas entre todas as cidades.
+    void GerarMatrizDistancias();
 
 public:
+    // Inicializa o mundo: gera cidades, matriz de distâncias e primeira geração (época 0).
+    // Retorna ponteiro para o Mundo criado em memória gerenciada pelo C++.
+    static Mundo* Setup(int quantidadeCidades, DistribuicaoCidades distribuicao, double taxaMutacao, int tamanhoPopulacao);
 
+    // Consulta a distância entre cidade i e cidade j.
+    // Normaliza os índices automaticamente (funciona para qualquer ordem de i, j).
+    double Distancia(int i, int j) const;
+
+    // Getters
+    const std::vector<Cidade>& Cidades() const;
+    int QuantidadeCidades() const;
+    int EpocaAtual() const;
 };
 
-#endif // MUNDO_CPP
+#endif // MUNDO_HPP

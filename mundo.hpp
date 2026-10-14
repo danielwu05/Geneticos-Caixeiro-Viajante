@@ -21,7 +21,9 @@ private:
     std::vector<std::vector<Individuo>> individuos;  // Bidimensional: [epoca][individuo]
 
     int quantidadeCidades;
+    int tamanhoPopulacao;
     int epocaAtual;
+    double taxaDeMutacaoInicial;
 
     // Matriz de distâncias triangular superior.
     // distancias[i][j-i-1] com i < j armazena a distância euclidiana entre cidade i e cidade j.
@@ -33,6 +35,9 @@ private:
 
     // Preenche a matriz triangular superior com as distâncias euclidianas entre todas as cidades.
     void GerarMatrizDistancias();
+
+    // Gera a primeira gereação de individuos;
+    std::vector<Individuo> PrimeiraGeracao(int quantidade, double mutacaoInicial);
 
 public:
     // Inicializa o mundo: gera cidades, matriz de distâncias e primeira geração (época 0).
@@ -52,6 +57,9 @@ public:
     const std::vector<Cidade>& Cidades() const;
     int QuantidadeCidades() const;
     int EpocaAtual() const;
+    const std::vector<std::vector<Individuo>>& Populacao() const;
+    int TamanhoPopulacao() const;
+    double TaxaDeMutacaoInicial() const;
 };
 
 #endif // MUNDO_HPP

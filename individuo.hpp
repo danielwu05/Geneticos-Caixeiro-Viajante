@@ -21,11 +21,9 @@ private:
 
 public:
 	// Construtor 1: O vetor de cidades vem acompanhado da tag Genetica. Dessa forma, o vetor passado é a genética do individuo e não deve ser alterado.
-	// Todo: Mudar quando a matriz de distância for implementada. vai receber pra calcular coisas já no construtor.
 	Individuo(const std::vector<Cidade>& genetica, Genetica, double mutacao, const Mundo& mundo);
 
 	// Construtor 2: O vetor de cidades vem acompanhado da tag Cidade. Dessa forma, o vetor passado deve passar por transformações, e então, se torna a genética do individuo.
-	// Todo: Mudar quando a matriz de distância for implementada. vai receber pra calcular coisas já no construtor.
 	Individuo(const std::vector<Cidade>& cidades, Cidades, double mutacao, const Mundo& mundo);
 
 	// Retorna uma cópia da genética do individuo.

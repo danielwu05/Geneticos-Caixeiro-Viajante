@@ -29,6 +29,20 @@ void Mundo::GerarCidades(int quantidade, DistribuicaoCidades distribuicao) {
     }
 }
 
+// Cria a primeira geração de individuos
+// Todos eles têm como cidade inicial uma cidade aleatória.
+std::vector<Individuo> Mundo::PrimeiraGeracao(int quantidade, double mutacaoInicial) {
+    std::vector<Individuo> precursores;
+    precursores.reserve(quantidade);
+
+    for (int i = 0; i < quantidade; i++) {
+        // emplace_back -> cria uma instância do tipo do vetor usando o construtor da instância em questão e coloca na última posição vaga no vetor.
+        precursores.emplace_back(this->cidades, AfirmarCidade, mutacaoInicial, *this);
+    }
+
+    return precursores;
+}
+
 // Matriz de distâncias triangular superior
 // Layout: distancias[i][j-i-1] com i < j  →  distância entre cidade i e cidade j.
 // A diagonal (i == j) e o triângulo inferior (i > j) não são armazenados.
@@ -91,6 +105,8 @@ Mundo* Mundo::Setup(int quantidadeCidades, DistribuicaoCidades distribuicao, dou
 
     Mundo* mundo = new Mundo();
     mundo->quantidadeCidades = quantidadeCidades;
+    mundo->tamanhoPopulacao = tamanhoPopulacao;
+    mundo->taxaDeMutacaoInicial = taxaMutacao;
     mundo->epocaAtual = 0;
 
     mundo->GerarCidades(quantidadeCidades, distribuicao);
@@ -98,6 +114,7 @@ Mundo* Mundo::Setup(int quantidadeCidades, DistribuicaoCidades distribuicao, dou
 
     // Todo: Gerar a primeira geração (época 0) — tarefa de Indivíduos + pareamento.
     // mundo->individuos.push_back( ... primeira geração ... );
+    mundo->individuos.push_back(mundo->PrimeiraGeracao(tamanhoPopulacao, taxaMutacao));
 
     return mundo;
 }
@@ -114,4 +131,16 @@ int Mundo::QuantidadeCidades() const {
 
 int Mundo::EpocaAtual() const {
     return this->epocaAtual;
+}
+
+const std::vector<std::vector<Individuo>>& Mundo::Populacao() const{
+    return this->individuos;
+}
+
+int Mundo::TamanhoPopulacao() const {
+    return this->tamanhoPopulacao;
+}
+
+double Mundo::TaxaDeMutacaoInicial() const {
+    return this->taxaDeMutacaoInicial;
 }

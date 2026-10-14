@@ -64,6 +64,22 @@ double Mundo::Distancia(int i, int j) const {
     return distancias[i][j - i - 1];
 }
 
+// Reprodução
+
+Individuo Mundo::Reproduzir(const std::vector<Individuo>& populacao, const Selecao& selecao, const Crossover& crossover, const Mutacao& mutacao) {
+    std::vector<const Individuo*> pais = selecao.SelecionarVarios(populacao, 2);
+    const Individuo& pai = *pais[0];
+    const Individuo& mae = *pais[1];
+
+    double taxa = (pai.TaxaDeMutacao() + mae.TaxaDeMutacao()) / 2.0;
+
+    // A mutação acontece antes de construir o filho, para que distância e fitness calculados no construtor já reflitam a rota final.
+    std::vector<Cidade> genetica = crossover.Cruzar(pai, mae);
+    mutacao.Mutar(genetica, taxa);
+
+    return Individuo(genetica, AfirmarGenetica, taxa);
+}
+
 // Setup
 Mundo* Mundo::Setup(int quantidadeCidades, DistribuicaoCidades distribuicao, double taxaMutacao, int tamanhoPopulacao) {
     

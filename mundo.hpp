@@ -3,6 +3,9 @@
 
 #include "individuo.hpp"
 #include "cidade.hpp"
+#include "selecao.hpp"
+#include "crossover.hpp"
+#include "mutacao.hpp"
 
 #include <vector>
 
@@ -39,6 +42,11 @@ public:
     // Consulta a distância entre cidade i e cidade j.
     // Normaliza os índices automaticamente (funciona para qualquer ordem de i, j).
     double Distancia(int i, int j) const;
+
+    // Reprodução: seleciona pai e mãe, aplica o crossover e a mutação, e retorna o filho.
+    // Os tipos são passados por referência à classe base (polimorfismo), para comparar combinações diferentes.
+    // O filho carrega a média das taxas de mutação dos pais.
+    static Individuo Reproduzir(const std::vector<Individuo>& populacao, const Selecao& selecao, const Crossover& crossover, const Mutacao& mutacao);
 
     // Getters
     const std::vector<Cidade>& Cidades() const;

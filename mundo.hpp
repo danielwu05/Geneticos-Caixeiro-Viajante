@@ -20,15 +20,15 @@ private:
     int quantidadeCidades;
     int epocaAtual;
 
-    // Matriz de distâncias triangular inferior.
-    // distancias[i][j] com i > j armazena a distância euclidiana entre cidade i e cidade j.
+    // Matriz de distâncias triangular superior.
+    // distancias[i][j-i-1] com i < j armazena a distância euclidiana entre cidade i e cidade j.
     // Acesse sempre via Distancia(i, j) para normalizar os índices automaticamente.
     std::vector<std::vector<double>> distancias;
 
     // Aloca as cidades conforme o cenário escolhido.
     void GerarCidades(int quantidade, DistribuicaoCidades distribuicao);
 
-    // Preenche a matriz triangular inferior com as distâncias euclidianas entre todas as cidades.
+    // Preenche a matriz triangular superior com as distâncias euclidianas entre todas as cidades.
     void GerarMatrizDistancias();
 
 public:

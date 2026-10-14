@@ -29,27 +29,26 @@ void Mundo::GerarCidades(int quantidade, DistribuicaoCidades distribuicao) {
     }
 }
 
-// Matriz de distâncias triangular inferior 
-// Layout: distancias[i][j] com i > j  →  distância entre cidade i e cidade j.
-// A diagonal (i == j) e o triângulo superior (i < j) não são armazenados.
+// Matriz de distâncias triangular superior
+// Layout: distancias[i][j-i-1] com i < j  →  distância entre cidade i e cidade j.
+// A diagonal (i == j) e o triângulo inferior (i > j) não são armazenados.
 // Para consultar, use sempre Distancia(i, j) — ele normaliza os índices.
 
 void Mundo::GerarMatrizDistancias() {
     int n = static_cast<int>(cidades.size());
 
-    // distancias[i] tem exatamente i entradas (índices 0..i-1)
+    // distancias[i] tem exatamente (n-i-1) entradas (colunas i+1 até n-1)
     distancias.resize(n);
     for (int i = 0; i < n; i++) {
-        distancias[i].resize(i);  // linha i tem i colunas (0 até i-1)
+        distancias[i].resize(n - i - 1);  // linha i tem (n-i-1) colunas
     }
 
-    for (int i = 1; i < n; i++) {
-        for (int j = 0; j < i; j++) {
+    for (int i = 0; i < n - 1; i++) {
+        for (int j = i + 1; j < n; j++) {
             double dx = cidades[i].X() - cidades[j].X();
             double dy = cidades[i].Y() - cidades[j].Y();
             //PEGA A DISTÂNCIA EUCLIDIANA entre cada cidade
-            distancias[i][j] = std::sqrt(dx * dx + dy * dy);
-     
+            distancias[i][j - i - 1] = std::sqrt(dx * dx + dy * dy);
         }
     }
 }
@@ -59,10 +58,10 @@ void Mundo::GerarMatrizDistancias() {
 double Mundo::Distancia(int i, int j) const {
     if (i == j) return 0.0;
 
-    // Garante que acessamos sempre o triângulo inferior (linha > coluna)
-    if (i < j) std::swap(i, j);
+    // Garante que acessamos sempre o triângulo superior (linha < coluna)
+    if (i > j) std::swap(i, j);
 
-    return distancias[i][j];
+    return distancias[i][j - i - 1];
 }
 
 // Setup

@@ -77,7 +77,7 @@ Individuo Mundo::Reproduzir(const std::vector<Individuo>& populacao, const Selec
     std::vector<Cidade> genetica = crossover.Cruzar(pai, mae);
     mutacao.Mutar(genetica, taxa);
 
-    return Individuo(genetica, AfirmarGenetica, taxa);
+    return Individuo(genetica, AfirmarGenetica, taxa, *this);
 }
 
 // Setup

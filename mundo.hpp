@@ -15,10 +15,26 @@ enum class DistribuicaoCidades {
     Circular    // Círculo de pontos (benchmark)
 };
 
+// Sumariza as informações de cada época.
+struct Epoca {
+    int indiceEpoca;                // indice da epoca.
+    double melhorDistancia;         // melhor distância obtida na epoca.
+    double distanciaMedia;          // distância média da epoca - parâmetro utilizado como critério de parada. Se a diferença de média entre duas épocas for menor que 0.01, deixa de valer a pena avançar ainda mais.
+    double piorDistancia;           // pior distância obtida na epoca.
+    std::vector<int> melhorRota;    // melhor rota obtida.
+
+    // Escolhas selecionadas para gerar a epoca atual.
+    std::string nomeSelecao;        // ex: "Torneio(3)", "Roleta"
+    std::string nomeCrossover;      // ex: "ERX", "OX", "PMX"
+    std::string nomeMutacao;        // ex: "Inversao", "Troca"
+};
+
+
 class Mundo {
 private:
     std::vector<Cidade> cidades;
-    std::vector<std::vector<Individuo>> individuos;  // Bidimensional: [epoca][individuo]
+    std::vector<std::vector<Individuo>> individuos;     // Bidimensional: [epoca][individuo]
+    std::vector<Epoca> eras;                            // Vetor que armazena a sumarização do resultado de cada epoca.
 
     int quantidadeCidades;
     int tamanhoPopulacao;
@@ -39,10 +55,15 @@ private:
     // Gera a primeira gereação de individuos;
     std::vector<Individuo> PrimeiraGeracao(int quantidade, double mutacaoInicial);
 
+    void RegistrarEpoca(int indiceEpoca, const std::string& selecao, const std::string& crossover, const std::string& mutacao);
+
 public:
     // Inicializa o mundo: gera cidades, matriz de distâncias e primeira geração (época 0).
     // Retorna ponteiro para o Mundo criado em memória gerenciada pelo C++.
     static Mundo* Setup(int quantidadeCidades, DistribuicaoCidades distribuicao, double taxaMutacao, int tamanhoPopulacao);
+
+    // Responsável por gerar o avanço de épocas.
+    void AvancarEpoca(const Selecao& selecao, const Crossover& crossover, const Mutacao& mutacao);
 
     // Consulta a distância entre cidade i e cidade j.
     // Normaliza os índices automaticamente (funciona para qualquer ordem de i, j).
@@ -60,6 +81,7 @@ public:
     const std::vector<std::vector<Individuo>>& Populacao() const;
     int TamanhoPopulacao() const;
     double TaxaDeMutacaoInicial() const;
+    const std::vector<Epoca>& Eras() const;
 };
 
 #endif // MUNDO_HPP

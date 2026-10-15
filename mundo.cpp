@@ -3,6 +3,7 @@
 #include <cmath>    // sqrt, cos, sin, M_PI
 #include <random>
 #include <stdexcept>
+#include <algorithm> // std::max_element
 
 // Alocação de cidades
 
@@ -78,8 +79,50 @@ double Mundo::Distancia(int i, int j) const {
     return distancias[i][j - i - 1];
 }
 
-// Reprodução
+void Mundo::RegistrarEpoca (int indiceEpoca, const std::string& selecao, const std::string& crossover, const std::string& mutacao) {
+    const std::vector<Individuo>& populacao = this->individuos[indiceEpoca];
 
+    double menorDistancia = populacao[0].DistanciaTotal();
+    double maiorDistancia = menorDistancia;
+    double somaDistancias = 0.0;
+    const Individuo* melhorIndividuo = &populacao[0];
+
+    for (const auto& ind : populacao) {
+        double d = ind.DistanciaTotal();
+        somaDistancias += d;
+
+        if (d < menorDistancia) {
+            menorDistancia = d;
+            melhorIndividuo = &ind;
+        }
+
+        if (d > maiorDistancia) {
+            maiorDistancia = d;
+        }
+    }
+
+    std::vector<int> idsRota;
+    idsRota.reserve(melhorIndividuo->GeneticaDoIndividuo().size());
+
+    for (const Cidade& c : melhorIndividuo->GeneticaDoIndividuo()) {
+        idsRota.push_back(c.Id());
+    }
+
+    this->eras.push_back(
+        Epoca{
+            indiceEpoca,
+            menorDistancia,
+            somaDistancias / populacao.size(),
+            maiorDistancia,
+            std::move(idsRota),
+            selecao,
+            crossover,
+            mutacao
+        }
+    );
+}
+
+// Reprodução
 Individuo Mundo::Reproduzir(const std::vector<Individuo>& populacao, const Selecao& selecao, const Crossover& crossover, const Mutacao& mutacao) {
     std::vector<const Individuo*> pais = selecao.SelecionarVarios(populacao, 2);
     const Individuo& pai = *pais[0];
@@ -112,11 +155,43 @@ Mundo* Mundo::Setup(int quantidadeCidades, DistribuicaoCidades distribuicao, dou
     mundo->GerarCidades(quantidadeCidades, distribuicao);
     mundo->GerarMatrizDistancias();
 
-    // Todo: Gerar a primeira geração (época 0) — tarefa de Indivíduos + pareamento.
     // mundo->individuos.push_back( ... primeira geração ... );
+    // Geração da primeira epoca
     mundo->individuos.push_back(mundo->PrimeiraGeracao(tamanhoPopulacao, taxaMutacao));
 
+    // Registra a informacao da primeira epoca
+    mundo->RegistrarEpoca(0, "Nenhuma (inicial)", "Nenhum (inicial)", "Nenhum (inicial)");
+
     return mundo;
+}
+
+void Mundo::AvancarEpoca(const Selecao& selecao, const Crossover& crossover, const Mutacao& mutacao) {
+    const std::vector<Individuo>& populacaoAtual = this->individuos[this->epocaAtual];
+
+    std::vector<Individuo> novaGeracao;
+    novaGeracao.reserve(this->tamanhoPopulacao);
+
+    // A melhor rota de uma geração é preservada na próxima.
+    auto melhorIndividuo = std::max_element(
+        populacaoAtual.begin(), populacaoAtual.end(),
+        [](const Individuo& a, const Individuo& b) {
+            return a.FitnessDoIndividuo() < b.FitnessDoIndividuo();
+        }
+    );
+
+    novaGeracao.push_back(*melhorIndividuo);
+
+    // Reprodução para preencher o restante (taxa de reposição mantida em 1 (não cresce nem diminui))
+    while (static_cast<int>(novaGeracao.size()) < this->tamanhoPopulacao) {
+        novaGeracao.push_back(this->Reproduzir(populacaoAtual, selecao, crossover, mutacao));
+    }
+
+    // atualiza as informações quanto a epoca
+    this->individuos.push_back(std::move(novaGeracao));
+    this->epocaAtual++;
+
+    // registra as informações da nova geração em 'eras'
+    this->RegistrarEpoca(this->epocaAtual, selecao.Nome(), crossover.Nome(), mutacao.Nome());
 }
 
 // Getters
@@ -143,4 +218,8 @@ int Mundo::TamanhoPopulacao() const {
 
 double Mundo::TaxaDeMutacaoInicial() const {
     return this->taxaDeMutacaoInicial;
+}
+
+const std::vector<Epoca>& Mundo::Eras() const {
+    return this->eras;
 }

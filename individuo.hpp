@@ -26,7 +26,12 @@ public:
 	// Construtor 2: O vetor de cidades vem acompanhado da tag Cidade. Dessa forma, o vetor passado deve passar por transformações, e então, se torna a genética do individuo.
 	Individuo(const std::vector<Cidade>& cidades, Cidades, double mutacao, const Mundo& mundo);
 
-	// Retorna uma cópia da genética do individuo.
+	// O uso de operator< é usado pra exlicitar o que Individuo < Individuo significa. Por exemplo, daria pra fazer com que Individuo + Individuo resultasse na reprodução de dois deles.
+	bool operator<(const Individuo& outro) const {
+		return this->fitness > outro.fitness;
+	}
+
+	// Retorna uma cópia da referência da genética do individuo.
 	const std::vector<Cidade>& GeneticaDoIndividuo() const;
 
 	// Retorna a distância que representa a rota do individuo.

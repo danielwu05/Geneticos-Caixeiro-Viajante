@@ -4,9 +4,9 @@
 //ENCAPSULAMENTO
 class Cidade { 
 private:
+    int id;     // Identificador único da cidade
     double x;   // Coordenada X da cidade
     double y;   // Coordenada Y da cidade
-    int id;     // Identificador único da cidade
     
 
 //PARA PASSAR O VALOR DO MEMBRO PRIVATE PARA FORA DELE

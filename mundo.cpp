@@ -80,7 +80,7 @@ double Mundo::Distancia(int i, int j) const {
 }
 
 void Mundo::RegistrarEpoca (int indiceEpoca, const std::string& selecao, const std::string& crossover, const std::string& mutacao) {
-    const std::vector<Individuo>& populacao = this->individuos[indiceEpoca];
+    const std::vector<Individuo>& populacao = this->individuos;
 
     double menorDistancia = populacao[0].DistanciaTotal();
     double maiorDistancia = menorDistancia;
@@ -157,7 +157,7 @@ Mundo* Mundo::Setup(int quantidadeCidades, DistribuicaoCidades distribuicao, dou
 
     // mundo->individuos.push_back( ... primeira geração ... );
     // Geração da primeira epoca
-    mundo->individuos.push_back(mundo->PrimeiraGeracao(tamanhoPopulacao, taxaMutacao));
+    mundo->individuos = mundo->PrimeiraGeracao(tamanhoPopulacao, taxaMutacao);
 
     // Registra a informacao da primeira epoca
     mundo->RegistrarEpoca(0, "Nenhuma (inicial)", "Nenhum (inicial)", "Nenhum (inicial)");
@@ -166,7 +166,7 @@ Mundo* Mundo::Setup(int quantidadeCidades, DistribuicaoCidades distribuicao, dou
 }
 
 void Mundo::AvancarEpoca(const Selecao& selecao, const Crossover& crossover, const Mutacao& mutacao) {
-    const std::vector<Individuo>& populacaoAtual = this->individuos[this->epocaAtual];
+    const std::vector<Individuo>& populacaoAtual = this->individuos;
 
     std::vector<Individuo> novaGeracao;
     novaGeracao.reserve(this->tamanhoPopulacao);
@@ -187,7 +187,7 @@ void Mundo::AvancarEpoca(const Selecao& selecao, const Crossover& crossover, con
     }
 
     // atualiza as informações quanto a epoca
-    this->individuos.push_back(std::move(novaGeracao));
+    this->individuos = std::move(novaGeracao);
     this->epocaAtual++;
 
     // registra as informações da nova geração em 'eras'
@@ -208,7 +208,7 @@ int Mundo::EpocaAtual() const {
     return this->epocaAtual;
 }
 
-const std::vector<std::vector<Individuo>>& Mundo::Populacao() const{
+const std::vector<Individuo>& Mundo::Populacao() const{
     return this->individuos;
 }
 

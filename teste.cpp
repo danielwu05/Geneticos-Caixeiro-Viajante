@@ -16,9 +16,9 @@ double ObterPicoMemoriaMB() {
 
 int main() {
   // Parâmetros da simulação
-  const int numCidades = 750;
-  const int tamanhoPop = 200;
-  const int totalEpocas = 3000;
+  const int numCidades = 500;
+  const int tamanhoPop = 500;
+  const int totalEpocas = 5000;
   int intervaloRegistro = 10;
   const double taxaMutacaoInicial = 0.1;
 
@@ -63,7 +63,7 @@ int main() {
   std::ofstream epocaMelhorDistancia;
   std::ofstream epocaDistanciaMedia;
   std::ofstream epocaPiorDistancia;
-
+  // TODO: Concetrar tudo isso em avançar época
   CriarArquivoTabela(epocaMelhorDistancia, "melhor_distancia", "Época",
                      "Melhor Distância");
   CriarArquivoTabela(epocaDistanciaMedia, "distancia_media", "Época", "Média");

@@ -33,7 +33,7 @@ struct Epoca {
 class Mundo {
 private:
     std::vector<Cidade> cidades;
-    std::vector<std::vector<Individuo>> individuos;     // Bidimensional: [epoca][individuo]
+    std::vector<Individuo> individuos;     // Bidimensional: [epoca][individuo]
     std::vector<Epoca> eras;                            // Vetor que armazena a sumarização do resultado de cada epoca.
 
     int quantidadeCidades;
@@ -78,7 +78,7 @@ public:
     const std::vector<Cidade>& Cidades() const;
     int QuantidadeCidades() const;
     int EpocaAtual() const;
-    const std::vector<std::vector<Individuo>>& Populacao() const;
+    const std::vector<Individuo>& Populacao() const;
     int TamanhoPopulacao() const;
     double TaxaDeMutacaoInicial() const;
     const std::vector<Epoca>& Eras() const;

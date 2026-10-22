@@ -1,7 +1,7 @@
 #include "criacao_de_graficos.hpp"
 
 void CriarArquivoTabela(ofstream &meuArquivo, string nomeArquivo,
-                        string parametro1, string parametro2) {
+                        vector<string> parametros) {
 
   string nomeArquivoComExtensao = nomeArquivo + ".csv";
 
@@ -14,18 +14,24 @@ void CriarArquivoTabela(ofstream &meuArquivo, string nomeArquivo,
          << endl;
   }
 
-  string cabecalhoDoArquivo = parametro1 + "," + parametro2 + "\n";
+  int i = 0;
+  for (i = 0; i < parametros.size() - 1; i++) {
+    meuArquivo << parametros[i] << ",";
+  }
 
-  meuArquivo << cabecalhoDoArquivo;
+  meuArquivo << parametros.back() << "\n";
 }
 
-void AdicionarLinhaArquivo(ofstream &meuArquivo, float valorParametro1,
-                           float valorParametro2) {
-  string parametrosConcatenados =
-      to_string(valorParametro1) + "," + to_string(valorParametro2) + "\n";
+void AdicionarLinhaArquivo(ofstream &meuArquivo, vector<float> parametros) {
 
   if (meuArquivo.is_open() && meuArquivo.good()) {
-    meuArquivo << parametrosConcatenados;
+
+    int i = 0;
+    for (i = 0; i < parametros.size() - 1; i++) {
+      meuArquivo << parametros[i] << ",";
+    }
+
+    meuArquivo << parametros.back() << "\n";
   } else {
     cerr << "Erro: Arquivo não está aberto ou não pode ser editado" << endl;
   }

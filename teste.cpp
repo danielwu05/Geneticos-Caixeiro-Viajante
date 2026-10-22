@@ -18,8 +18,9 @@ int main() {
   // Parâmetros da simulação
   const int numCidades = 500;
   const int tamanhoPop = 500;
-  const int totalEpocas = 5000;
-  int intervaloRegistro = 10;
+  const int totalEpocas = 500;
+  int numeroIntervalo = 10;
+  int intervaloRegistro = totalEpocas / numeroIntervalo;
   const double taxaMutacaoInicial = 0.1;
 
   std::cout << "====================================================\n";
@@ -63,12 +64,20 @@ int main() {
   std::ofstream epocaMelhorDistancia;
   std::ofstream epocaDistanciaMedia;
   std::ofstream epocaPiorDistancia;
+  std::ofstream epocaSumario;
+  std::ofstream epocaDiferenca;
+
   // TODO: Concetrar tudo isso em avançar época
-  CriarArquivoTabela(epocaMelhorDistancia, "melhor_distancia", "Época",
-                     "Melhor Distância");
-  CriarArquivoTabela(epocaDistanciaMedia, "distancia_media", "Época", "Média");
-  CriarArquivoTabela(epocaPiorDistancia, "pior_distancia", "Época",
-                     "Pior Distância");
+  CriarArquivoTabela(epocaMelhorDistancia, "distancia_melhor",
+                     {"Época", "Melhor Distância"});
+  CriarArquivoTabela(epocaDistanciaMedia, "distancia_media",
+                     {"Época", "Média"});
+  CriarArquivoTabela(epocaPiorDistancia, "distancia_pior",
+                     {"Época", "Pior Distância"});
+  CriarArquivoTabela(epocaSumario, "distancia_sumario",
+                     {"Época", "Melhor Distância", "Média", "Pior Distância"});
+  CriarArquivoTabela(epocaDiferenca, "distancia_diferenca",
+                     {"Época", "Melhor Distância", "Média", "Pior Distância"});
 
   size_t passo = (totalEpocas / intervaloRegistro > 0)
                      ? (totalEpocas / intervaloRegistro)
@@ -82,18 +91,34 @@ int main() {
                 << " | Média: " << std::setw(8) << eras[i].distanciaMedia
                 << " | Pior: " << std::setw(8) << eras[i].piorDistancia << "\n";
 
-      AdicionarLinhaArquivo(epocaMelhorDistancia, eras[i].indiceEpoca,
-                            eras[i].melhorDistancia);
-      AdicionarLinhaArquivo(epocaDistanciaMedia, eras[i].indiceEpoca,
-                            eras[i].distanciaMedia);
-      AdicionarLinhaArquivo(epocaPiorDistancia, eras[i].indiceEpoca,
-                            eras[i].piorDistancia);
+      AdicionarLinhaArquivo(
+          epocaMelhorDistancia,
+          {float(eras[i].indiceEpoca), float(eras[i].melhorDistancia)});
+      AdicionarLinhaArquivo(
+          epocaDistanciaMedia,
+          {float(eras[i].indiceEpoca), float(eras[i].distanciaMedia)});
+      AdicionarLinhaArquivo(epocaPiorDistancia, {float(eras[i].indiceEpoca),
+                                                 float(eras[i].piorDistancia)});
+      AdicionarLinhaArquivo(epocaSumario, {float(eras[i].indiceEpoca),
+                                           float(eras[i].melhorDistancia),
+                                           float(eras[i].distanciaMedia),
+                                           float(eras[i].piorDistancia)});
+      if (i >= 1) {
+        AdicionarLinhaArquivo(
+            epocaDiferenca,
+            {float(eras[i].indiceEpoca),
+             float(eras[i].melhorDistancia - eras[i - 1].melhorDistancia),
+             float(eras[i].distanciaMedia - eras[i - 1].distanciaMedia),
+             float(eras[i].piorDistancia - eras[i - 1].piorDistancia)});
+      }
     }
   }
 
   FecharArquivo(epocaMelhorDistancia);
   FecharArquivo(epocaDistanciaMedia);
   FecharArquivo(epocaPiorDistancia);
+  FecharArquivo(epocaSumario);
+  FecharArquivo(epocaDiferenca);
 
   // 6. Cálculo do Ótimo Teórico D*(n) no círculo unitário
   // D*(n) = 2 * n * sin(pi / n)

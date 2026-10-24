@@ -1,225 +1,373 @@
 #include "mundo.hpp"
 
-#include <cmath>    // sqrt, cos, sin, M_PI
-#include <random>
+#include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <cstddef>
+#include <filesystem>
+#include <fstream>
+#include <iomanip>
+#include <numeric>
 #include <stdexcept>
-#include <algorithm> // std::max_element
+#include <string>
+#include <utility>
 
-// Alocação de cidades
+namespace {
+constexpr double PI = 3.14159265358979323846;
 
-void Mundo::GerarCidades(int quantidade, DistribuicaoCidades distribuicao) {
+void escreverRota(std::ostream &saida, const std::vector<int> &rota) {
+  for (std::size_t i = 0; i < rota.size(); ++i) {
+    if (i > 0)
+      saida << ' ';
+    saida << rota[i];
+  }
+}
+} // namespace
+
+Mundo::Mundo(int quantidadeCidades, int tamanhoPopulacao, double taxaMutacao,
+             int maxEpocas, int limiteSemMelhora, const std::string &cenario,
+             const std::string &diretorio)
+    : cenario(cenario), taxaMutacao(taxaMutacao),
+      tamanhoPopulacao(tamanhoPopulacao), maxEpocas(maxEpocas),
+      limiteSemMelhora(limiteSemMelhora), diretorio(diretorio),
+      gerador(std::random_device{}()) {
+
+  if (quantidadeCidades < 3 || tamanhoPopulacao < 2 || taxaMutacao < 0.0 ||
+      taxaMutacao > 1.0) {
+    throw std::invalid_argument(
+        "Parâmetros inválidos para iniciar o algoritmo.");
+  }
+
+  std::filesystem::create_directories(diretorio);
+  const auto caminhoCidades = std::filesystem::path(diretorio) / "cidades.csv";
+  bool reaproveitar = false;
+
+  if (std::filesystem::exists(caminhoCidades)) {
+    std::ifstream arq(caminhoCidades);
+    std::string primeiraLinha;
+    std::getline(arq, primeiraLinha); // Lê "#cenario:circular" ou "indice,x,y"
+
+    // Se tiver a tag do cenário, valida se é idêntico ao solicitado
+    bool mesmoCenario = true;
+    if (primeiraLinha.rfind("#cenario:", 0) == 0) {
+      std::string cenarioSalvo =
+          primeiraLinha.substr(9); // extrai após "#cenario:"
+      mesmoCenario = (cenarioSalvo == cenario);
+      std::getline(arq, primeiraLinha); // consome a linha seguinte "indice,x,y"
+    }
+
+    if (mesmoCenario) {
+      std::vector<Cidade> cidadesLidas;
+      int idx;
+      char sep1, sep2;
+      double x, y;
+      while (arq >> idx >> sep1 >> x >> sep2 >> y) {
+        cidadesLidas.emplace_back(idx, x, y);
+      }
+
+      // Só reaproveita se o cenário E a quantidade de cidades forem idênticos
+      if (static_cast<int>(cidadesLidas.size()) == quantidadeCidades) {
+        cidades = std::move(cidadesLidas);
+        reaproveitar = true;
+      }
+    }
+  }
+
+  if (!reaproveitar) {
     cidades.clear();
-    cidades.reserve(quantidade);
+    criarCidades(quantidadeCidades, cenario);
+  }
 
-    thread_local std::mt19937 gerador(std::random_device{}());
+  calcularMatrizDistancias();
+  criarPopulacaoInicial(static_cast<int>(cidades.size()));
+  encontrarMelhorRotaInicial();
 
-    if (distribuicao == DistribuicaoCidades::Uniforme) {
-        // Coordenadas uniformemente distribuídas em [0, 1)
-        std::uniform_real_distribution<double> dist(0.0, 1.0);
-        for (int i = 0; i < quantidade; i++) {
-            cidades.emplace_back(i, dist(gerador), dist(gerador));
-        }
-        
+  salvarResultados();
+  salvarEstado();
+}
+
+Mundo::Mundo(const std::string &diretorio)
+    : diretorio(diretorio), gerador(std::random_device{}()),
+      operadorSelecao(std::make_unique<SelecaoTorneio>(4)),
+      operadorCrossover(std::make_unique<CrossoverOX>()),
+      operadorMutacao(std::make_unique<MutacaoInversao>()) {
+
+  std::ifstream arquivo(std::filesystem::path(diretorio) / "estado.dat");
+  if (!arquivo) {
+    throw std::runtime_error(
+        "Não encontrei estado.dat; inicie um experimento primeiro.");
+  }
+
+  int quantidadeCidades = 0;
+  arquivo >> epoca >> epocasSemMelhora >> melhorDistancia >> taxaMutacao >>
+      tamanhoPopulacao >> maxEpocas >> limiteSemMelhora >> quantidadeCidades;
+
+  if (!arquivo || quantidadeCidades < 3) {
+    throw std::runtime_error(
+        "O arquivo de estado do experimento está inválido.");
+  }
+
+  cidades.reserve(quantidadeCidades);
+  for (int i = 0; i < quantidadeCidades; ++i) {
+    int indice = 0;
+    double x = 0.0;
+    double y = 0.0;
+    arquivo >> indice >> x >> y;
+    cidades.emplace_back(indice, x, y);
+  }
+  calcularMatrizDistancias();
+
+  int quantidadeIndividuos = 0;
+  arquivo >> quantidadeIndividuos;
+  individuos.reserve(quantidadeIndividuos);
+  for (int i = 0; i < quantidadeIndividuos; ++i) {
+    std::vector<int> rota(quantidadeCidades);
+    for (int &cidade : rota) {
+      arquivo >> cidade;
+    }
+    individuos.push_back(std::move(rota));
+  }
+
+  int tamanhoMelhorRota = 0;
+  arquivo >> tamanhoMelhorRota;
+  melhorRota.resize(tamanhoMelhorRota);
+  for (int &cidade : melhorRota) {
+    arquivo >> cidade;
+  }
+
+  if (!arquivo || !(arquivo >> tempoAcumulado)) {
+    tempoAcumulado = 0.0;
+  }
+}
+
+void Mundo::definirOperadores(std::unique_ptr<Selecao> sel,
+                              std::unique_ptr<Crossover> cross,
+                              std::unique_ptr<Mutacao> mut) {
+  if (sel)
+    operadorSelecao = std::move(sel);
+  if (cross)
+    operadorCrossover = std::move(cross);
+  if (mut)
+    operadorMutacao = std::move(mut);
+}
+
+void Mundo::criarCidades(int quantidadeCidades, const std::string &cenario) {
+  std::uniform_real_distribution<double> coordenada(0.0, 100.0);
+  cidades.reserve(quantidadeCidades);
+
+  for (int indice = 0; indice < quantidadeCidades; ++indice) {
+    double x = 0.0;
+    double y = 0.0;
+
+    if (cenario == "circular") {
+      const double angulo = 2.0 * PI * indice / quantidadeCidades;
+      x = 50.0 + 40.0 * std::cos(angulo);
+      y = 50.0 + 40.0 * std::sin(angulo);
     } else {
-        // Cenário circular: cidades igualmente espaçadas em um círculo unitário (benchmark)
-        const double raio = 1.0;
-        for (int i = 0; i < quantidade; i++) {
-            double angulo = 2.0 * M_PI * i / quantidade;
-            cidades.emplace_back(i, raio * std::cos(angulo), raio * std::sin(angulo));
-        }
+      x = coordenada(gerador);
+      y = coordenada(gerador);
     }
+    cidades.emplace_back(indice, x, y);
+  }
 }
 
-// Cria a primeira geração de individuos
-// Todos eles têm como cidade inicial uma cidade aleatória.
-std::vector<Individuo> Mundo::PrimeiraGeracao(int quantidade, double mutacaoInicial) {
-    std::vector<Individuo> precursores;
-    precursores.reserve(quantidade);
+void Mundo::calcularMatrizDistancias() {
+  const std::size_t n = cidades.size();
+  matrizDistancias.assign(n * n, 0.0);
 
-    for (int i = 0; i < quantidade; i++) {
-        // emplace_back -> cria uma instância do tipo do vetor usando o construtor da instância em questão e coloca na última posição vaga no vetor.
-        precursores.emplace_back(this->cidades, AfirmarCidade, mutacaoInicial, *this);
+  for (std::size_t i = 0; i < n; ++i) {
+    for (std::size_t j = i + 1; j < n; ++j) {
+      const double dx = cidades[i].X() - cidades[j].X();
+      const double dy = cidades[i].Y() - cidades[j].Y();
+      const double dist = std::sqrt(dx * dx + dy * dy);
+      matrizDistancias[i * n + j] = dist;
+      matrizDistancias[j * n + i] = dist;
     }
-
-    return precursores;
+  }
 }
 
-// Matriz de distâncias triangular superior
-// Layout: distancias[i][j-i-1] com i < j  →  distância entre cidade i e cidade j.
-// A diagonal (i == j) e o triângulo inferior (i > j) não são armazenados.
-// Para consultar, use sempre Distancia(i, j) — ele normaliza os índices.
+void Mundo::criarPopulacaoInicial(int quantidadeCidades) {
+  std::vector<int> rota(quantidadeCidades);
+  std::iota(rota.begin(), rota.end(), 0);
 
-void Mundo::GerarMatrizDistancias() {
-    int n = static_cast<int>(cidades.size());
-
-    // distancias[i] tem exatamente (n-i-1) entradas (colunas i+1 até n-1)
-    distancias.resize(n);
-    for (int i = 0; i < n; i++) {
-        distancias[i].resize(n - i - 1);  // linha i tem (n-i-1) colunas
-    }
-
-    for (int i = 0; i < n - 1; i++) {
-        for (int j = i + 1; j < n; j++) {
-            double dx = cidades[i].X() - cidades[j].X();
-            double dy = cidades[i].Y() - cidades[j].Y();
-            //PEGA A DISTÂNCIA EUCLIDIANA entre cada cidade
-            distancias[i][j - i - 1] = std::sqrt(dx * dx + dy * dy);
-        }
-    }
+  individuos.reserve(tamanhoPopulacao);
+  for (int i = 0; i < tamanhoPopulacao; ++i) {
+    std::shuffle(rota.begin(), rota.end(), gerador);
+    individuos.push_back(rota);
+  }
 }
 
-// Consulta de distância entre cidades i e j
+void Mundo::encontrarMelhorRotaInicial() {
+  melhorRota = individuos.front();
+  melhorDistancia = distancia(melhorRota);
 
-double Mundo::Distancia(int i, int j) const {
-    if (i == j) return 0.0;
-
-    // Garante que acessamos sempre o triângulo superior (linha < coluna)
-    if (i > j) std::swap(i, j);
-
-    return distancias[i][j - i - 1];
-}
-
-void Mundo::RegistrarEpoca (int indiceEpoca, const std::string& selecao, const std::string& crossover, const std::string& mutacao) {
-    const std::vector<Individuo>& populacao = this->individuos[indiceEpoca];
-
-    double menorDistancia = populacao[0].DistanciaTotal();
-    double maiorDistancia = menorDistancia;
-    double somaDistancias = 0.0;
-    const Individuo* melhorIndividuo = &populacao[0];
-
-    for (const auto& ind : populacao) {
-        double d = ind.DistanciaTotal();
-        somaDistancias += d;
-
-        if (d < menorDistancia) {
-            menorDistancia = d;
-            melhorIndividuo = &ind;
-        }
-
-        if (d > maiorDistancia) {
-            maiorDistancia = d;
-        }
+  for (const auto &ind : individuos) {
+    const double d = distancia(ind);
+    if (d < melhorDistancia) {
+      melhorDistancia = d;
+      melhorRota = ind;
     }
-
-    std::vector<int> idsRota;
-    idsRota.reserve(melhorIndividuo->GeneticaDoIndividuo().size());
-
-    for (const Cidade& c : melhorIndividuo->GeneticaDoIndividuo()) {
-        idsRota.push_back(c.Id());
-    }
-
-    this->eras.push_back(
-        Epoca{
-            indiceEpoca,
-            menorDistancia,
-            somaDistancias / populacao.size(),
-            maiorDistancia,
-            std::move(idsRota),
-            selecao,
-            crossover,
-            mutacao
-        }
-    );
+  }
 }
 
-// Reprodução
-Individuo Mundo::Reproduzir(const std::vector<Individuo>& populacao, const Selecao& selecao, const Crossover& crossover, const Mutacao& mutacao) {
-    std::vector<const Individuo*> pais = selecao.SelecionarVarios(populacao, 2);
-    const Individuo& pai = *pais[0];
-    const Individuo& mae = *pais[1];
-
-    double taxa = (pai.TaxaDeMutacao() + mae.TaxaDeMutacao()) / 2.0;
-
-    // A mutação acontece antes de construir o filho, para que distância e fitness calculados no construtor já reflitam a rota final.
-    std::vector<Cidade> genetica = crossover.Cruzar(pai, mae);
-    mutacao.Mutar(genetica, taxa);
-
-    return Individuo(genetica, AfirmarGenetica, taxa, *this);
+double Mundo::distancia(const std::vector<int> &rota) const {
+  const std::size_t n = rota.size();
+  double total = 0.0;
+  for (std::size_t i = 0; i < n - 1; ++i) {
+    total += matrizDistancias[rota[i] * n + rota[i + 1]];
+  }
+  total += matrizDistancias[rota[n - 1] * n + rota[0]];
+  return total;
 }
 
-// Setup
-Mundo* Mundo::Setup(int quantidadeCidades, DistribuicaoCidades distribuicao, double taxaMutacao, int tamanhoPopulacao) {
-    
-    // Validação Do critério do enunciado
-    //POSSIVEL REMOVER
-    if (quantidadeCidades < 8) {
-        throw std::invalid_argument("O enunciado exige ao menos 8 cidades.");
+void Mundo::avancar(int quantidadeEpocas) {
+  const auto inicio = std::chrono::steady_clock::now();
+  const double baseTempo = tempoAcumulado;
+  const std::size_t tamPop = individuos.size();
+
+  std::vector<double> distancias(tamPop);
+#pragma omp parallel for
+  for (std::size_t i = 0; i < tamPop; ++i) {
+    distancias[i] = distancia(individuos[i]);
+  }
+
+  for (int passo = 0; passo < quantidadeEpocas && !concluido(); ++passo) {
+    const auto itMelhor =
+        std::min_element(distancias.begin(), distancias.end());
+    const std::size_t idxMelhor =
+        static_cast<std::size_t>(std::distance(distancias.begin(), itMelhor));
+
+    std::vector<std::vector<int>> novaPopulacao(tamanhoPopulacao);
+    std::vector<double> novasDistancias(tamanhoPopulacao);
+
+    // Elitismo
+    novaPopulacao[0] = individuos[idxMelhor];
+    novasDistancias[0] = distancias[idxMelhor];
+
+#pragma omp parallel for
+    for (int i = 1; i < tamanhoPopulacao; ++i) {
+      std::size_t pA = operadorSelecao->Selecionar(distancias);
+      std::size_t pB = operadorSelecao->Selecionar(distancias);
+
+      std::vector<int> filho =
+          operadorCrossover->Cruzar(individuos[pA], individuos[pB]);
+      operadorMutacao->Mutar(filho, taxaMutacao);
+
+      novasDistancias[i] = distancia(filho);
+      novaPopulacao[i] = std::move(filho);
     }
 
-    Mundo* mundo = new Mundo();
-    mundo->quantidadeCidades = quantidadeCidades;
-    mundo->tamanhoPopulacao = tamanhoPopulacao;
-    mundo->taxaDeMutacaoInicial = taxaMutacao;
-    mundo->epocaAtual = 0;
+    individuos = std::move(novaPopulacao);
+    distancias = std::move(novasDistancias);
+    ++epoca;
 
-    mundo->GerarCidades(quantidadeCidades, distribuicao);
-    mundo->GerarMatrizDistancias();
+    const double tAtual =
+        baseTempo +
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - inicio)
+            .count();
+    registrarEpoca(tAtual, distancias);
+  }
 
-    // mundo->individuos.push_back( ... primeira geração ... );
-    // Geração da primeira epoca
-    mundo->individuos.push_back(mundo->PrimeiraGeracao(tamanhoPopulacao, taxaMutacao));
-
-    // Registra a informacao da primeira epoca
-    mundo->RegistrarEpoca(0, "Nenhuma (inicial)", "Nenhum (inicial)", "Nenhum (inicial)");
-
-    return mundo;
+  tempoAcumulado = baseTempo + std::chrono::duration<double>(
+                                   std::chrono::steady_clock::now() - inicio)
+                                   .count();
+  salvarEstado();
 }
 
-void Mundo::AvancarEpoca(const Selecao& selecao, const Crossover& crossover, const Mutacao& mutacao) {
-    const std::vector<Individuo>& populacaoAtual = this->individuos[this->epocaAtual];
+void Mundo::registrarEpoca(double tempoAtual,
+                           const std::vector<double> &distancias) {
+  double soma = 0.0;
+  std::size_t idxMelhorGen = 0;
+  double menorGen = distancias[0];
+  bool melhora = false;
 
-    std::vector<Individuo> novaGeracao;
-    novaGeracao.reserve(this->tamanhoPopulacao);
+  const double melhorAnt = melhorDistancia;
 
-    // A melhor rota de uma geração é preservada na próxima.
-    auto melhorIndividuo = std::max_element(
-        populacaoAtual.begin(), populacaoAtual.end(),
-        [](const Individuo& a, const Individuo& b) {
-            return a.FitnessDoIndividuo() < b.FitnessDoIndividuo();
-        }
-    );
-
-    novaGeracao.push_back(*melhorIndividuo);
-
-    // Reprodução para preencher o restante (taxa de reposição mantida em 1 (não cresce nem diminui))
-    while (static_cast<int>(novaGeracao.size()) < this->tamanhoPopulacao) {
-        novaGeracao.push_back(this->Reproduzir(populacaoAtual, selecao, crossover, mutacao));
+  for (std::size_t i = 0; i < distancias.size(); ++i) {
+    const double d = distancias[i];
+    soma += d;
+    if (d < menorGen) {
+      menorGen = d;
+      idxMelhorGen = i;
     }
+    if (d + 1e-9 < melhorDistancia) {
+      melhorDistancia = d;
+      melhorRota = individuos[i];
+      melhora = true;
+    }
+  }
 
-    // atualiza as informações quanto a epoca
-    this->individuos.push_back(std::move(novaGeracao));
-    this->epocaAtual++;
+  epocasSemMelhora = melhora ? 0 : epocasSemMelhora + 1;
+  const double mediaAtual = soma / distancias.size();
+  if (epoca == 1)
+    mediaAnterior = mediaAtual;
 
-    // registra as informações da nova geração em 'eras'
-    this->RegistrarEpoca(this->epocaAtual, selecao.Nome(), crossover.Nome(), mutacao.Nome());
+  const double deltaMelhor = melhorDistancia - melhorAnt;
+  const double deltaMedia = mediaAtual - mediaAnterior;
+  mediaAnterior = mediaAtual;
+
+  std::ofstream arq(std::filesystem::path(diretorio) / "historico.csv",
+                    std::ios::app);
+  arq << epoca << ',' << std::setprecision(12) << melhorDistancia << ','
+      << mediaAtual << ',' << deltaMelhor << ',' << deltaMedia << ",\"";
+  escreverRota(arq, melhorRota);
+  arq << "\"," << menorGen << ",\"";
+  escreverRota(arq, individuos[idxMelhorGen]);
+  arq << "\"," << tempoAtual << '\n';
+
+  tempoAcumulado = tempoAtual;
 }
 
-// Getters
-
-const std::vector<Cidade>& Mundo::Cidades() const {
-    return this->cidades;
+bool Mundo::concluido() const {
+  return epoca >= maxEpocas || epocasSemMelhora >= limiteSemMelhora;
 }
 
-int Mundo::QuantidadeCidades() const {
-    return this->quantidadeCidades;
+int Mundo::epocaAtual() const { return epoca; }
+
+void Mundo::salvarResultados() {
+  std::ofstream arqCidades(std::filesystem::path(diretorio) / "cidades.csv");
+  arqCidades << "#cenario:" << cenario << "\n";
+  arqCidades << "indice,x,y\n" << std::setprecision(12);
+  for (const auto &c : cidades) {
+    arqCidades << c.Id() << ',' << c.X() << ',' << c.Y() << '\n';
+  }
+
+  std::ofstream hist(std::filesystem::path(diretorio) / "historico.csv");
+  hist << "epoca,melhor_distancia,distancia_media,distancia_delta,"
+          "distancia_delta_media,melhor_rota,melhor_geracao,rota_geracao,tempo_"
+          "segundos\n";
+
+  double soma = 0.0;
+  for (const auto &ind : individuos)
+    soma += distancia(ind);
+  mediaAnterior = soma / individuos.size();
+
+  hist << "0," << std::setprecision(12) << melhorDistancia << ','
+       << mediaAnterior << ",0.0,0.0,\"";
+  escreverRota(hist, melhorRota);
+  hist << "\"," << melhorDistancia << ",\"";
+  escreverRota(hist, melhorRota);
+  hist << "\"," << tempoAcumulado << '\n';
 }
 
-int Mundo::EpocaAtual() const {
-    return this->epocaAtual;
-}
+void Mundo::salvarEstado() const {
+  std::ofstream arq(std::filesystem::path(diretorio) / "estado.dat");
+  arq << epoca << ' ' << epocasSemMelhora << ' ' << std::setprecision(17)
+      << melhorDistancia << ' ' << taxaMutacao << ' ' << tamanhoPopulacao << ' '
+      << maxEpocas << ' ' << limiteSemMelhora << ' ' << cidades.size() << '\n';
 
-const std::vector<std::vector<Individuo>>& Mundo::Populacao() const{
-    return this->individuos;
-}
+  for (const auto &c : cidades) {
+    arq << c.Id() << ' ' << c.X() << ' ' << c.Y() << '\n';
+  }
 
-int Mundo::TamanhoPopulacao() const {
-    return this->tamanhoPopulacao;
-}
+  arq << individuos.size() << '\n';
+  for (const auto &r : individuos) {
+    escreverRota(arq, r);
+    arq << '\n';
+  }
 
-double Mundo::TaxaDeMutacaoInicial() const {
-    return this->taxaDeMutacaoInicial;
-}
-
-const std::vector<Epoca>& Mundo::Eras() const {
-    return this->eras;
+  arq << melhorRota.size();
+  for (int c : melhorRota)
+    arq << ' ' << c;
+  arq << '\n' << tempoAcumulado << '\n';
 }

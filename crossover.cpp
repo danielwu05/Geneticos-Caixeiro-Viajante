@@ -1,202 +1,192 @@
 #include "crossover.hpp"
 #include <algorithm>
+#include <cstdint>
 #include <random>
+#include <variant>
+#include <vector>
 
 namespace {
-	std::mt19937& Gerador() {
-		thread_local std::mt19937 gerador(std::random_device{}());
-		return gerador;
-	}
-
-	// Sorteia o trecho [a, b] (a <= b) herdado do pai.
-	void SortearTrecho(int n, int& a, int& b) {
-		std::uniform_int_distribution<int> corte(0, n - 1);
-		a = corte(Gerador());
-		b = corte(Gerador());
-		if (a > b) std::swap(a, b);
-	}
+std::mt19937 &Gerador() {
+  static thread_local std::mt19937 gerador(std::random_device{}());
+  return gerador;
 }
+
+// Sorteia o trecho [a, b] (a <= b) herdado do pai.
+void SortearTrecho(int n, int &a, int &b) {
+  std::uniform_int_distribution<int> corte(0, n - 1);
+  a = corte(Gerador());
+  b = corte(Gerador());
+  if (a > b)
+    std::swap(a, b);
+}
+} // namespace
 
 // OX
 
-std::vector<Cidade> CrossoverOX::Cruzar(const Individuo& pai, const Individuo& mae) const {
-	const std::vector<Cidade>& genesPai = pai.GeneticaDoIndividuo();
-	const std::vector<Cidade>& genesMae = mae.GeneticaDoIndividuo();
-	int n = static_cast<int>(genesPai.size());
+std::vector<int> CrossoverOX::Cruzar(const std::vector<int> &pai,
+                                     const std::vector<int> &mae) const {
+  const int n = static_cast<int>(pai.size());
+  int a, b;
+  SortearTrecho(n, a, b);
 
-	int a, b;
-	SortearTrecho(n, a, b);
+  std::vector<int> filho(n, -1);
+  std::vector<std::uint8_t> usado(n, 0);
 
-	// Marca (pelo Id) as cidades do trecho [a, b] herdado do pai.
-	std::vector<bool> noTrecho(n, false);
-	for (int i = a; i <= b; i++) {
-		noTrecho[genesPai[i].Id()] = true;
-	}
+  for (int i = a; i <= b; ++i) {
+    filho[i] = pai[i];
+    usado[pai[i]] = 1;
+  }
 
-	// Cidades que faltam, na ordem em que aparecem na mãe a partir da posição b+1 (dando a volta).
-	std::vector<Cidade> resto;
-	resto.reserve(n - (b - a + 1));
-	for (int k = 1; k <= n; k++) {
-		const Cidade& cidade = genesMae[(b + k) % n];
-		if (!noTrecho[cidade.Id()]) resto.push_back(cidade);
-	}
-
-	// Monta o filho: posições b+1..n-1 recebem o início de "resto", posições 0..a-1 recebem o final dele e a..b fica com o trecho do pai.
-	int depoisDoTrecho = n - 1 - b;
-	std::vector<Cidade> filho;
-	filho.reserve(n);
-	filho.insert(filho.end(), resto.begin() + depoisDoTrecho, resto.end());
-	filho.insert(filho.end(), genesPai.begin() + a, genesPai.begin() + b + 1);
-	filho.insert(filho.end(), resto.begin(), resto.begin() + depoisDoTrecho);
-	return filho;
+  int proxima = (b + 1) % n;
+  for (int i = 0; i < n; ++i) {
+    const int gene = mae[(b + 1 + i) % n];
+    if (!usado[gene]) {
+      filho[proxima] = gene;
+      proxima = (proxima + 1) % n;
+    }
+  }
+  return filho;
 }
 
-std::string CrossoverOX::Nome() const {
-	return "OX";
-}
+std::string CrossoverOX::Nome() const { return "OX"; }
 
 // PMX
 
-std::vector<Cidade> CrossoverPMX::Cruzar(const Individuo& pai, const Individuo& mae) const {
-	const std::vector<Cidade>& genesPai = pai.GeneticaDoIndividuo();
-	const std::vector<Cidade>& genesMae = mae.GeneticaDoIndividuo();
-	int n = static_cast<int>(genesPai.size());
+std::vector<int> CrossoverPMX::Cruzar(const std::vector<int> &pai,
+                                      const std::vector<int> &mae) const {
+  const int n = static_cast<int>(pai.size());
+  int a, b;
+  SortearTrecho(n, a, b);
 
-	int a, b;
-	SortearTrecho(n, a, b);
+  std::vector<int> posPai(n);
+  for (int i = 0; i < n; ++i)
+    posPai[pai[i]] = i;
 
-	// posicaoNoPai[id] = posição da cidade "id" na rota do pai.
-	std::vector<int> posicaoNoPai(n);
-	for (int i = 0; i < n; i++) {
-		posicaoNoPai[genesPai[i].Id()] = i;
-	}
-	std::vector<bool> noTrecho(n, false);
-	for (int i = a; i <= b; i++) {
-		noTrecho[genesPai[i].Id()] = true;
-	}
+  std::vector<int> noTrecho(n, 0);
+  for (int i = 0; i < n; ++i)
+    noTrecho[pai[i]] = 1;
 
-	std::vector<Cidade> filho = genesMae;
-	for (int i = 0; i < n; i++) {
-		if (i >= a && i <= b) {
-			filho[i] = genesPai[i];
-			continue;
-		}
-		// Se a cidade da mãe já veio no trecho do pai, segue o mapeamento pai -> mãe até achar uma que não veio.
-		Cidade cidade = genesMae[i];
-		while (noTrecho[cidade.Id()]) {
-			cidade = genesMae[posicaoNoPai[cidade.Id()]];
-		}
-		filho[i] = cidade;
-	}
-	return filho;
+  std::vector<int> filho = mae;
+  for (int i = 0; i < n; ++i) {
+    if (i >= a && i <= b) {
+      filho[i] = pai[i];
+      continue;
+    }
+    int gene = mae[i];
+    while (noTrecho[gene]) {
+      gene = mae[posPai[gene]];
+    }
+    filho[i] = gene;
+  }
+  return filho;
 }
 
-std::string CrossoverPMX::Nome() const {
-	return "PMX";
-}
+std::string CrossoverPMX::Nome() const { return "PMX"; }
 
 // ERX
 
-std::vector<Cidade> CrossoverERX::Cruzar(const Individuo& pai, const Individuo& mae) const {
-	const std::vector<Cidade>& genesPai = pai.GeneticaDoIndividuo();
-	const std::vector<Cidade>& genesMae = mae.GeneticaDoIndividuo();
-	int n = static_cast<int>(genesPai.size());
+std::vector<int> CrossoverERX::Cruzar(const std::vector<int> &pai,
+                                      const std::vector<int> &mae) const {
+  const int n = static_cast<int>(pai.size());
+  std::vector<std::vector<int>> vizinhos(n);
 
-	// Tabela de arestas: vizinhos[id] = cidades ligadas a "id" em qualquer um dos pais (a rota é cíclica).
-	std::vector<std::vector<int>> vizinhos(n);
-	auto adicionarArestas = [&](const std::vector<Cidade>& genes) {
-		for (int i = 0; i < n; i++) {
-			int atual = genes[i].Id();
-			for (int vizinho : {genes[(i + 1) % n].Id(), genes[(i + n - 1) % n].Id()}) {
-				if (std::find(vizinhos[atual].begin(), vizinhos[atual].end(), vizinho) == vizinhos[atual].end()) {
-					vizinhos[atual].push_back(vizinho);
-				}
-			}
-		}
-	};
-	adicionarArestas(genesPai);
-	adicionarArestas(genesMae);
+  auto adicionar = [&](const std::vector<int> &r) {
+    for (int i = 0; i < n; ++i) {
+      int u = r[i];
+      int v1 = r[(i + 1) % n];
+      int v2 = r[(i + n - 1) % n];
+      if (std::find(vizinhos[u].begin(), vizinhos[u].end(), v1) ==
+          vizinhos[u].end())
+        vizinhos[u].push_back(v1);
+      if (std::find(vizinhos[u].begin(), vizinhos[u].end(), v2) ==
+          vizinhos[u].end())
+        vizinhos[u].push_back(v2);
+    }
+  };
+  adicionar(pai);
+  adicionar(mae);
 
-	std::vector<const Cidade*> cidadePorId(n);
-	for (const Cidade& cidade : genesPai) {
-		cidadePorId[cidade.Id()] = &cidade;
-	}
+  std::vector<int> naoVisitados(n), pos(n);
 
-	// Cidades ainda não visitadas, com remoção O(1) (troca com a última).
-	std::vector<int> naoVisitadas(n), posicaoEmNaoVisitadas(n);
-	for (int i = 0; i < n; i++) {
-		naoVisitadas[i] = i;
-		posicaoEmNaoVisitadas[i] = i;
-	}
-	auto marcarVisitada = [&](int id) {
-		int pos = posicaoEmNaoVisitadas[id];
-		int ultima = naoVisitadas.back();
-		naoVisitadas[pos] = ultima;
-		posicaoEmNaoVisitadas[ultima] = pos;
-		naoVisitadas.pop_back();
-	};
+  for (int i = 0; i < n; ++i) {
+    naoVisitados[i] = i;
+    pos[i] = i;
+  }
 
-	std::vector<Cidade> filho;
-	filho.reserve(n);
-	int atual = genesPai[0].Id();
-	while (true) {
-		filho.push_back(*cidadePorId[atual]);
-		marcarVisitada(atual);
-		if (naoVisitadas.empty()) break;
+  auto marcar = [&](int u) {
+    int p = pos[u];
+    int ultimo = naoVisitados.back();
+    naoVisitados[p] = ultimo;
+    pos[ultimo] = p;
+    naoVisitados.pop_back();
+  };
 
-		// Remove a cidade atual das listas dos seus vizinhos.
-		for (int vizinho : vizinhos[atual]) {
-			std::vector<int>& lista = vizinhos[vizinho];
-			lista.erase(std::find(lista.begin(), lista.end(), atual));
-		}
+  std::vector<int> filho;
 
-		if (vizinhos[atual].empty()) {
-			// Sem aresta herdada disponível: segue para uma cidade não visitada aleatória.
-			std::uniform_int_distribution<int> sorteio(0, static_cast<int>(naoVisitadas.size()) - 1);
-			atual = naoVisitadas[sorteio(Gerador())];
-		} else {
-			// Escolhe o vizinho com menos vizinhos restantes (evita que ele fique isolado depois).
-			int proximo = vizinhos[atual][0];
-			for (int vizinho : vizinhos[atual]) {
-				if (vizinhos[vizinho].size() < vizinhos[proximo].size()) proximo = vizinho;
-			}
-			atual = proximo;
-		}
-	}
-	return filho;
+  filho.reserve(n);
+  int atual = pai[0];
+
+  while (true) {
+    filho.push_back(atual);
+    marcar(atual);
+    if (naoVisitados.empty())
+      break;
+
+    for (int v : vizinhos[atual]) {
+      auto &lst = vizinhos[v];
+      auto it = std::find(lst.begin(), lst.end(), atual);
+      if (it != lst.end())
+        lst.erase(it);
+    }
+
+    if (vizinhos[atual].empty()) {
+      std::uniform_int_distribution<int> sort(
+          0, static_cast<int>(naoVisitados.size() - 1));
+      atual = naoVisitados[sort(Gerador())];
+    } else {
+      int proximo = vizinhos[atual][0];
+      for (int v : vizinhos[atual]) {
+        if (vizinhos[v].size() < vizinhos[proximo].size()) {
+          proximo = v;
+        }
+      }
+      atual = proximo;
+    }
+  }
+  return filho;
 }
 
-std::string CrossoverERX::Nome() const {
-	return "ERX";
-}
+std::string CrossoverERX::Nome() const { return "ERX"; }
 
 // Uniforme (Uniform Order-Based)
 
-std::vector<Cidade> CrossoverUniforme::Cruzar(const Individuo& pai, const Individuo& mae) const {
-	const std::vector<Cidade>& genesPai = pai.GeneticaDoIndividuo();
-	const std::vector<Cidade>& genesMae = mae.GeneticaDoIndividuo();
-	int n = static_cast<int>(genesPai.size());
+std::vector<int> CrossoverUniforme::Cruzar(const std::vector<int> &pai,
+                                           const std::vector<int> &mae) const {
+  const int n = static_cast<int>(pai.size());
+  std::bernoulli_distribution moeda(0.5);
+  std::vector<std::uint8_t> doPai(n, 0);
+  std::vector<std::uint8_t> usada(n, 0);
 
-	// Máscara: true = a posição herda a cidade do pai.
-	std::bernoulli_distribution moeda(0.5);
-	std::vector<bool> doPai(n);
-	std::vector<bool> usada(n, false);
-	for (int i = 0; i < n; i++) {
-		doPai[i] = moeda(Gerador());
-		if (doPai[i]) usada[genesPai[i].Id()] = true;
-	}
+  for (int i = 0; i < n; ++i) {
+    if (moeda(Gerador())) {
+      doPai[i] = 1;
+      usada[pai[i]] = 1;
+    }
+  }
 
-	// Preenche as posições restantes com as cidades que faltam, na ordem da mãe.
-	std::vector<Cidade> filho = genesPai;
-	int posicaoMae = 0;
-	for (int i = 0; i < n; i++) {
-		if (doPai[i]) continue;
-		while (usada[genesMae[posicaoMae].Id()]) posicaoMae++;
-		filho[i] = genesMae[posicaoMae++];
-	}
-	return filho;
+  std::vector<int> filho = pai;
+
+  int posMae = 0;
+  for (int i = 0; i < n; ++i) {
+    if (doPai[i]) {
+      continue;
+    }
+    while (usada[mae[posMae]]) {
+      ++posMae;
+    }
+    filho[i] = mae[posMae++];
+  }
+  return filho;
 }
 
-std::string CrossoverUniforme::Nome() const {
-	return "Uniforme";
-}
+std::string CrossoverUniforme::Nome() const { return "Uniforme"; }

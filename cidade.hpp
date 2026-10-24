@@ -1,21 +1,18 @@
 #ifndef CIDADE_HPP
 #define CIDADE_HPP
 
-//ENCAPSULAMENTO
-class Cidade { 
+class Cidade {
 private:
-    int id;     // Identificador único da cidade
-    double x;   // Coordenada X da cidade
-    double y;   // Coordenada Y da cidade
-    
+  int id;
+  double x;
+  double y;
 
-//PARA PASSAR O VALOR DO MEMBRO PRIVATE PARA FORA DELE
+  // PARA PASSAR O VALOR DO MEMBRO PRIVATE PARA FORA DELE
 public:
-    Cidade(int id, double x, double y);
-
-    double X() const;
-    double Y() const;
-    int Id() const;
+  Cidade(int id = 0, double x = 0.0, double y = 0.0);
+  int Id() const;
+  double X() const;
+  double Y() const;
 };
 
-#endif // CIDADE_HPP
+#endif

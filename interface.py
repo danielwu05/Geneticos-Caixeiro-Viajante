@@ -1,5 +1,6 @@
 import csv
 import json
+import subprocess
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
@@ -24,6 +25,12 @@ class Interface:
             "sem_melhora": tk.StringVar(value="100"),
         }
         self.status = tk.StringVar(value="Carregue uma pasta com os CSVs dos resultados.")
+        self.pasta_experimento: Path | None = None
+        self.cidades_atuais: list[tuple[float, float]] = []
+        self.historico_atual: list[dict] = []
+        self.botao_avancar = None
+        self.botao_avancar_10 = None
+        self.seletor_epoca = None
         self._montar_janela()
 
     def _montar_janela(self) -> None:
@@ -56,17 +63,34 @@ class Interface:
             row=6, column=0, columnspan=2, sticky="ew", pady=(12, 4)
         )
         ttk.Separator(controles).grid(row=7, column=0, columnspan=2, sticky="ew", pady=10)
-        ttk.Button(controles, text="Abrir resultados (CSV)...", command=self.abrir_resultados).grid(
+        ttk.Button(controles, text="Iniciar experimento...", command=self.iniciar_experimento).grid(
             row=8, column=0, columnspan=2, sticky="ew", pady=4
+        )
+        self.botao_avancar = ttk.Button(
+            controles, text="Avançar época", command=lambda: self.avancar_epocas(1), state=tk.DISABLED
+        )
+        self.botao_avancar.grid(row=9, column=0, columnspan=2, sticky="ew", pady=4)
+        self.botao_avancar_10 = ttk.Button(
+            controles, text="Avançar 10 épocas", command=lambda: self.avancar_epocas(10), state=tk.DISABLED
+        )
+        self.botao_avancar_10.grid(row=10, column=0, columnspan=2, sticky="ew", pady=4)
+        ttk.Button(controles, text="Abrir resultados (CSV)...", command=self.abrir_resultados).grid(
+            row=11, column=0, columnspan=2, sticky="ew", pady=4
         )
         ttk.Label(
             controles,
-            text="O algoritmo C++ poderá ler a configuração salva e gerar os CSVs.",
+            text="Inicie um experimento e avance uma época por clique. Os gráficos são atualizados a cada avanço.",
             wraplength=230,
-        ).grid(row=9, column=0, columnspan=2, sticky="w", pady=(10, 0))
+        ).grid(row=12, column=0, columnspan=2, sticky="w", pady=(10, 0))
 
         area = ttk.Frame(painel)
         area.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
+        barra_epoca = ttk.Frame(area)
+        barra_epoca.pack(fill=tk.X, pady=(0, 6))
+        ttk.Label(barra_epoca, text="Rota da época:").pack(side=tk.LEFT)
+        self.seletor_epoca = ttk.Combobox(barra_epoca, state="readonly", width=10)
+        self.seletor_epoca.pack(side=tk.LEFT, padx=6)
+        self.seletor_epoca.bind("<<ComboboxSelected>>", self._selecionar_epoca)
         self.figure, (self.ax_distancia, self.ax_rota) = plt.subplots(
             1, 2, figsize=(10, 5), constrained_layout=True
         )
@@ -127,9 +151,79 @@ class Interface:
         try:
             historico = self._ler_historico(Path(pasta) / "historico.csv")
             cidades = self._ler_cidades(Path(pasta) / "cidades.csv")
+            self.pasta_experimento = Path(pasta) if (Path(pasta) / "estado.dat").exists() else None
+            self.cidades_atuais = cidades
+            self.historico_atual = historico
+            if self.pasta_experimento:
+                self.botao_avancar.configure(state=tk.NORMAL)
+                self.botao_avancar_10.configure(state=tk.NORMAL)
+            else:
+                self.botao_avancar.configure(state=tk.DISABLED)
+                self.botao_avancar_10.configure(state=tk.DISABLED)
             self._desenhar(historico, cidades)
         except (OSError, ValueError, KeyError) as erro:
             messagebox.showerror("Não foi possível abrir os resultados", str(erro))
+
+    def _executavel(self) -> Path:
+        pasta = Path(__file__).resolve().parent
+        fontes = [pasta / "main.cpp", pasta / "mundo.cpp", pasta / "mundo.hpp", pasta / "cidade.cpp", pasta / "cidade.hpp"]
+        executavel = pasta / "caixeiro"
+        if not executavel.exists() or any(fonte.stat().st_mtime > executavel.stat().st_mtime for fonte in fontes):
+            subprocess.run(
+                ["g++", "-std=c++17", "-O2", "main.cpp", "mundo.cpp", "cidade.cpp", "-o", "caixeiro"],
+                cwd=pasta, check=True, capture_output=True, text=True,
+            )
+        return executavel
+
+    def iniciar_experimento(self) -> None:
+        try:
+            config = self._ler_configuracao()
+        except ValueError as erro:
+            messagebox.showerror("Parâmetros inválidos", str(erro))
+            return
+        destino = filedialog.askdirectory(title="Escolha a pasta para salvar o experimento")
+        if not destino:
+            return
+        pasta = Path(destino)
+        if any((pasta / nome).exists() for nome in ("estado.dat", "historico.csv", "cidades.csv")):
+            if not messagebox.askyesno("Substituir experimento?", "Esta pasta já contém arquivos de resultados. Deseja iniciar um novo experimento e substituí-los?"):
+                return
+        try:
+            subprocess.run(
+                [str(self._executavel()), "--start", str(config["quantidade_cidades"]),
+                 str(config["tamanho_populacao"]), str(config["taxa_mutacao"]),
+                 str(config["max_epocas"]), str(config["epocas_sem_melhora"]),
+                 config["cenario"], str(pasta)], check=True, capture_output=True, text=True,
+            )
+            self.pasta_experimento = pasta
+            self.botao_avancar.configure(state=tk.NORMAL)
+            self.botao_avancar_10.configure(state=tk.NORMAL)
+            self._atualizar_experimento()
+        except (OSError, subprocess.CalledProcessError) as erro:
+            detalhe = erro.stderr if isinstance(erro, subprocess.CalledProcessError) else str(erro)
+            messagebox.showerror("Falha ao iniciar o experimento", detalhe)
+
+    def avancar_epocas(self, quantidade: int) -> None:
+        if not self.pasta_experimento:
+            return
+        try:
+            resultado = subprocess.run(
+                [str(self._executavel()), "--step", str(self.pasta_experimento), str(quantidade)],
+                check=True, capture_output=True, text=True,
+            )
+            self._atualizar_experimento()
+            if "concluído" in resultado.stdout:
+                self.botao_avancar.configure(state=tk.DISABLED)
+                self.botao_avancar_10.configure(state=tk.DISABLED)
+        except (OSError, subprocess.CalledProcessError) as erro:
+            detalhe = erro.stderr if isinstance(erro, subprocess.CalledProcessError) else str(erro)
+            messagebox.showerror("Falha ao avançar época", detalhe)
+
+    def _atualizar_experimento(self) -> None:
+        assert self.pasta_experimento is not None
+        self.historico_atual = self._ler_historico(self.pasta_experimento / "historico.csv")
+        self.cidades_atuais = self._ler_cidades(self.pasta_experimento / "cidades.csv")
+        self._desenhar(self.historico_atual, self.cidades_atuais)
 
     @staticmethod
     def _ler_historico(caminho: Path) -> list[dict]:
@@ -143,6 +237,10 @@ class Interface:
             registro["melhor_distancia"] = float(registro["melhor_distancia"])
             registro["distancia_media"] = float(registro["distancia_media"])
             registro["melhor_rota"] = [int(i) for i in registro["melhor_rota"].replace(",", " ").split()]
+            registro["melhor_geracao"] = float(registro.get("melhor_geracao") or registro["melhor_distancia"])
+            rota_geracao = registro.get("rota_geracao") or registro["melhor_rota"]
+            registro["rota_geracao"] = [int(i) for i in rota_geracao.replace(",", " ").split()]
+            registro["tempo_segundos"] = float(registro.get("tempo_segundos") or 0.0)
         return registros
 
     @staticmethod
@@ -157,9 +255,11 @@ class Interface:
     def _desenhar(self, historico: list[dict], cidades: list[tuple[float, float]]) -> None:
         epocas = [registro["epoca"] for registro in historico]
         melhores = [registro["melhor_distancia"] for registro in historico]
+        melhores_epoca = [registro["melhor_geracao"] for registro in historico]
         medias = [registro["distancia_media"] for registro in historico]
         self.ax_distancia.clear()
-        self.ax_distancia.plot(epocas, melhores, label="Melhor distância")
+        self.ax_distancia.plot(epocas, melhores_epoca, label="Melhor da época")
+        self.ax_distancia.plot(epocas, melhores, label="Melhor histórico", linestyle="--")
         self.ax_distancia.plot(epocas, medias, label="Média da população", alpha=0.8)
         self.ax_distancia.set_title("Evolução por época")
         self.ax_distancia.set_xlabel("Época")
@@ -167,7 +267,28 @@ class Interface:
         self.ax_distancia.grid(True, alpha=0.25)
         self.ax_distancia.legend()
 
-        rota = historico[-1]["melhor_rota"]
+        self.seletor_epoca["values"] = [str(epoca) for epoca in epocas]
+        self.seletor_epoca.set(str(epocas[-1]))
+        self._desenhar_rota(historico, cidades, len(historico) - 1)
+        tempos = historico[-1]["tempo_segundos"]
+        self.canvas.draw_idle()
+        self.status.set(
+            f"{len(cidades)} cidades | época {historico[-1]['epoca']} | "
+            f"melhor distância: {min(melhores):.3f} | tempo: {tempos:.2f} s"
+        )
+
+    def _selecionar_epoca(self, _evento=None) -> None:
+        if not self.historico_atual or not self.cidades_atuais:
+            return
+        selecionada = int(self.seletor_epoca.get())
+        indice = next(i for i, registro in enumerate(self.historico_atual)
+                      if registro["epoca"] == selecionada)
+        self._desenhar_rota(self.historico_atual, self.cidades_atuais, indice)
+        self.canvas.draw_idle()
+
+    def _desenhar_rota(self, historico: list[dict], cidades: list[tuple[float, float]], indice: int) -> None:
+        registro = historico[indice]
+        rota = registro["rota_geracao"]
         if not rota or any(indice < 0 or indice >= len(cidades) for indice in rota):
             raise ValueError("A rota do último registro contém índices inválidos.")
         percurso = rota + [rota[0]]
@@ -176,17 +297,12 @@ class Interface:
         self.ax_rota.clear()
         self.ax_rota.plot(xs, ys, "o-", markersize=4)
         self.ax_rota.scatter(xs[0], ys[0], color="red", zorder=3, label="Início/fim")
-        self.ax_rota.set_title(f"Melhor rota — época {historico[-1]['epoca']}")
+        self.ax_rota.set_title(f"Melhor rota da época {registro['epoca']}")
         self.ax_rota.set_xlabel("x")
         self.ax_rota.set_ylabel("y")
         self.ax_rota.axis("equal")
         self.ax_rota.grid(True, alpha=0.25)
         self.ax_rota.legend()
-        self.canvas.draw_idle()
-        self.status.set(
-            f"{len(cidades)} cidades | {len(historico)} épocas | "
-            f"melhor distância: {min(melhores):.3f}"
-        )
 
 
 def main() -> None:

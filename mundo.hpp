@@ -30,7 +30,7 @@ private:
   std::string diretorio;
   std::mt19937 gerador;
 
-  // Operadores configuráveis
+  // Operadores configuráveis polimórficos
   std::unique_ptr<Selecao> operadorSelecao;
   std::unique_ptr<Crossover> operadorCrossover;
   std::unique_ptr<Mutacao> operadorMutacao;
@@ -50,6 +50,8 @@ public:
   explicit Mundo(const std::string &diretorio);
 
   double distancia(const std::vector<int> &rota) const;
+  double Distancia(int i, int j) const;
+
   void definirOperadores(std::unique_ptr<Selecao> sel,
                          std::unique_ptr<Crossover> cross,
                          std::unique_ptr<Mutacao> mut);
@@ -59,4 +61,4 @@ public:
   int epocaAtual() const;
 };
 
-#endif
+#endif // MUNDO_HPP

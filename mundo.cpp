@@ -8,9 +8,11 @@
 #include <fstream>
 #include <iomanip>
 #include <numeric>
+#include <random>
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace {
 constexpr double PI = 3.14159265358979323846;
@@ -30,7 +32,10 @@ Mundo::Mundo(int quantidadeCidades, int tamanhoPopulacao, double taxaMutacao,
     : cenario(cenario), taxaMutacao(taxaMutacao),
       tamanhoPopulacao(tamanhoPopulacao), maxEpocas(maxEpocas),
       limiteSemMelhora(limiteSemMelhora), diretorio(diretorio),
-      gerador(std::random_device{}()) {
+      gerador(std::random_device{}()),
+      operadorSelecao(std::make_unique<SelecaoTorneio>(4)),
+      operadorCrossover(std::make_unique<CrossoverOX>()),
+      operadorMutacao(std::make_unique<MutacaoInversao>()) {
 
   if (quantidadeCidades < 3 || tamanhoPopulacao < 2 || taxaMutacao < 0.0 ||
       taxaMutacao > 1.0) {
@@ -47,13 +52,11 @@ Mundo::Mundo(int quantidadeCidades, int tamanhoPopulacao, double taxaMutacao,
     std::string primeiraLinha;
     std::getline(arq, primeiraLinha); // Lê "#cenario:circular" ou "indice,x,y"
 
-    // Se tiver a tag do cenário, valida se é idêntico ao solicitado
     bool mesmoCenario = true;
     if (primeiraLinha.rfind("#cenario:", 0) == 0) {
-      std::string cenarioSalvo =
-          primeiraLinha.substr(9); // extrai após "#cenario:"
+      std::string cenarioSalvo = primeiraLinha.substr(9);
       mesmoCenario = (cenarioSalvo == cenario);
-      std::getline(arq, primeiraLinha); // consome a linha seguinte "indice,x,y"
+      std::getline(arq, primeiraLinha); // consome "indice,x,y"
     }
 
     if (mesmoCenario) {
@@ -65,7 +68,6 @@ Mundo::Mundo(int quantidadeCidades, int tamanhoPopulacao, double taxaMutacao,
         cidadesLidas.emplace_back(idx, x, y);
       }
 
-      // Só reaproveita se o cenário E a quantidade de cidades forem idênticos
       if (static_cast<int>(cidadesLidas.size()) == quantidadeCidades) {
         cidades = std::move(cidadesLidas);
         reaproveitar = true;
@@ -214,10 +216,20 @@ double Mundo::distancia(const std::vector<int> &rota) const {
   const std::size_t n = rota.size();
   double total = 0.0;
   for (std::size_t i = 0; i < n - 1; ++i) {
-    total += matrizDistancias[rota[i] * n + rota[i + 1]];
+    total += matrizDistancias[static_cast<std::size_t>(rota[i]) * n +
+                              static_cast<std::size_t>(rota[i + 1])];
   }
-  total += matrizDistancias[rota[n - 1] * n + rota[0]];
+  total += matrizDistancias[static_cast<std::size_t>(rota[n - 1]) * n +
+                            static_cast<std::size_t>(rota[0])];
   return total;
+}
+
+double Mundo::Distancia(int i, int j) const {
+  if (i == j)
+    return 0.0;
+  const std::size_t n = cidades.size();
+  return matrizDistancias[static_cast<std::size_t>(i) * n +
+                          static_cast<std::size_t>(j)];
 }
 
 void Mundo::avancar(int quantidadeEpocas) {

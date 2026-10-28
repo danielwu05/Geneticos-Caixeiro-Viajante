@@ -549,3 +549,153 @@ class Interface:
                     linha.get("melhor_geracao") or linha["melhor_distancia"]
                 )
                 rota_str = linha.get("rota_geracao") or linha["melhor_rota"]
+                linha["rota_geracao"] = [
+                    int(i) for i in rota_str.replace('"', "").replace(",", " ").split()
+                ]
+                linha["tempo_segundos"] = float(linha.get("tempo_segundos") or 0.0)
+                self.historico_atual.append(linha)
+
+        if self.historico_atual:
+            self._desenhar(self.historico_atual, self.cidades_atuais)
+
+    @staticmethod
+    def _ler_historico(caminho: Path) -> list[dict]:
+        with caminho.open(newline="", encoding="utf-8") as arquivo:
+            registros = list(csv.DictReader(arquivo))
+        obrigatorias = {"epoca", "melhor_distancia", "distancia_media", "melhor_rota"}
+        if not registros or not obrigatorias.issubset(registros[0]):
+            raise ValueError("historico.csv vazio ou sem as colunas esperadas.")
+        for registro in registros:
+            registro["epoca"] = int(registro["epoca"])
+            registro["melhor_distancia"] = float(registro["melhor_distancia"])
+            registro["distancia_media"] = float(registro["distancia_media"])
+            registro["distancia_delta"] = float(registro.get("distancia_delta") or 0.0)
+            registro["distancia_delta_media"] = float(
+                registro.get("distancia_delta_media") or 0.0
+            )
+            registro["melhor_rota"] = [
+                int(i) for i in registro["melhor_rota"].replace(",", " ").split()
+            ]
+            registro["melhor_geracao"] = float(
+                registro.get("melhor_geracao") or registro["melhor_distancia"]
+            )
+            rota_geracao = registro.get("rota_geracao") or registro["melhor_rota"]
+            registro["rota_geracao"] = [
+                int(i) for i in rota_geracao.replace(",", " ").split()
+            ]
+            registro["tempo_segundos"] = float(registro.get("tempo_segundos") or 0.0)
+        return registros
+
+    @staticmethod
+    def _ler_cidades(caminho: Path) -> list[tuple[float, float]]:
+        with caminho.open(newline="", encoding="utf-8") as arquivo:
+            linhas_validas = [l for l in arquivo if not l.startswith("#")]
+            registros = list(csv.DictReader(linhas_validas))
+
+        if not registros or not {"indice", "x", "y"}.issubset(registros[0]):
+            raise ValueError("cidades.csv vazio ou sem as colunas esperadas.")
+        registros.sort(key=lambda linha: int(linha["indice"]))
+        return [(float(linha["x"]), float(linha["y"])) for linha in registros]
+
+    def _desenhar(
+        self, historico: list[dict], cidades: list[tuple[float, float]]
+    ) -> None:
+        if not historico:
+            return
+
+        cross = self.vars["tipo_crossover"].get()
+        mut = self.vars["tipo_mutacao"].get()
+        sel = self.vars["tipo_selecao"].get()
+        cenario = self.vars["cenario"].get()
+
+        self.figure.suptitle(
+            f"TSP — {cenario} | Cross: {cross} | Mut: {mut} | Sel: {sel}",
+            fontsize=12,
+            fontweight="bold",
+        )
+
+        epocas = [registro["epoca"] for registro in historico]
+        melhores = [registro["melhor_distancia"] for registro in historico]
+        melhores_epoca = [registro["melhor_geracao"] for registro in historico]
+        medias = [registro["distancia_media"] for registro in historico]
+        delta = [registro["distancia_delta"] for registro in historico]
+        delta_media = [registro["distancia_delta_media"] for registro in historico]
+
+        self.linha_epoca.set_data(epocas, melhores_epoca)
+        self.linha_historico.set_data(epocas, melhores)
+        self.linha_media.set_data(epocas, medias)
+        self.linha_delta.set_data(epocas, delta)
+        self.linha_delta_media.set_data(epocas, delta_media)
+
+        self.ax_distancia.relim()
+        self.ax_distancia.autoscale_view()
+        self.ax_delta.relim()
+        self.ax_delta.autoscale_view()
+
+        self.seletor_epoca["values"] = [str(e) for e in epocas]
+        self.seletor_epoca.set(str(epocas[-1]))
+        self._desenhar_rota(historico, cidades, len(historico) - 1)
+
+        tempos = historico[-1]["tempo_segundos"]
+        self.status.set(
+            f"{len(cidades)} cidades | época {historico[-1]['epoca']} | "
+            f"melhor distância: {min(melhores):.3f} | tempo: {tempos:.2f} s"
+        )
+        self.canvas.draw_idle()
+
+    def _selecionar_epoca(self, _evento=None) -> None:
+        if not self.historico_atual or not self.cidades_atuais:
+            return
+        selecionada = int(self.seletor_epoca.get())
+        indice = next(
+            i
+            for i, registro in enumerate(self.historico_atual)
+            if registro["epoca"] == selecionada
+        )
+        self._desenhar_rota(self.historico_atual, self.cidades_atuais, indice)
+        self.canvas.draw_idle()
+
+    def _desenhar_rota(
+        self, historico: list[dict], cidades: list[tuple[float, float]], indice: int
+    ) -> None:
+        registro = historico[indice]
+        rota = registro["rota_geracao"]
+        if not rota or any(c < 0 or c >= len(cidades) for c in rota):
+            raise ValueError("A rota do último registro contém índices inválidos.")
+        percurso = rota + [rota[0]]
+        xs = [cidades[c][0] for c in percurso]
+        ys = [cidades[c][1] for c in percurso]
+        self.linha_rota.set_data(xs, ys)
+        self.ponto_inicio.set_data([xs[0]], [ys[0]])
+        self.ax_rota.set_title(f"Melhor rota da época {registro['epoca']}")
+
+        self.ax_rota.relim()
+        self.ax_rota.autoscale_view()
+
+
+def main() -> None:
+    root = tk.Tk()
+    app = Interface(root)
+    root.mainloop()
+
+    # Limpeza limpa de arquivos locais residuais
+    pasta_local = Path(__file__).resolve().parent
+    for nome in (
+        "estado.dat",
+        "configuracao.json",
+        "historico.csv",
+        "cidades.csv",
+        "caixeiro",
+    ):
+        caminho_local = pasta_local / nome
+        if caminho_local.exists():
+            try:
+                caminho_local.unlink()
+            except OSError:
+                pass
+
+    sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()

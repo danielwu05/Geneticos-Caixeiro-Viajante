@@ -63,7 +63,7 @@ std::vector<int> CrossoverPMX::Cruzar(const std::vector<int> &pai,
     posPai[pai[i]] = i;
 
   std::vector<int> noTrecho(n, 0);
-  for (int i = 0; i < n; ++i)
+  for (int i = a; i <= b; ++i)
     noTrecho[pai[i]] = 1;
 
   std::vector<int> filho = mae;

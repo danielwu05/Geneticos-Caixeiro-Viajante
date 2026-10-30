@@ -113,7 +113,13 @@ class Interface:
         ttk.Combobox(
             controles,
             textvariable=self.vars["tipo_selecao"],
-            values=("Torneio", "Roleta", "Ranking"),
+            values=(
+                "Torneio",
+                "Roleta",
+                "Ranking",
+                "Top Ranking",
+                "Amostragem Estocástica",
+            ),
             state="readonly",
             width=20,
         ).grid(row=3, column=1, pady=4)
@@ -437,7 +443,9 @@ class Interface:
                     str(pasta),
                     config["tipo_crossover"],
                     mut_param,
-                    config["tipo_selecao"],
+                    config[
+                        "tipo_selecao"
+                    ],  # Envia exatamente "Top Ranking" ou "Amostragem Estocástica"
                 ],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,

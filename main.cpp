@@ -1,4 +1,5 @@
 #include "mundo.hpp"
+#include "selecao.hpp"
 #include <filesystem>
 #include <iostream>
 
@@ -47,9 +48,12 @@ int main(int argc, char **argv) {
         selOp = std::make_unique<SelecaoRoleta>();
       else if (selNome == "Ranking")
         selOp = std::make_unique<SelecaoRanking>();
+      else if (selNome == "Top Ranking")
+        selOp = std::make_unique<SelecaoTopRanking>(0.2);
+      else if (selNome == "Amostragem Estocástica")
+        selOp = std::make_unique<SelecaoAmostragemEstocastica>();
       else
         selOp = std::make_unique<SelecaoTorneio>(4);
-
       mundo.definirOperadores(std::move(selOp), std::move(cross),
                               std::move(mutOp));
       std::cout << "Experimento iniciado na época 0.\n";

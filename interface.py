@@ -213,7 +213,6 @@ class Interface:
             [], [], label="Média da população", alpha=0.8, color="tab:orange"
         )
 
-        # Eixo Y secundário para manter escalas adequadas
         if not hasattr(self, "ax_delta") or self.ax_delta is None:
             self.ax_delta = self.ax_distancia.twinx()
         else:
@@ -443,9 +442,7 @@ class Interface:
                     str(pasta),
                     config["tipo_crossover"],
                     mut_param,
-                    config[
-                        "tipo_selecao"
-                    ],  # Envia exatamente "Top Ranking" ou "Amostragem Estocástica"
+                    config["tipo_selecao"],
                 ],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -481,6 +478,11 @@ class Interface:
     def avancar_epocas(self, quantidade: int) -> None:
         if not self.pasta_experimento:
             return
+
+        config = self._ler_configuracao()
+        mut_map = {"Inversão": "Inversao", "Troca": "Troca", "Inserção": "Insercao"}
+        mut_param = mut_map.get(config["tipo_mutacao"], config["tipo_mutacao"])
+
         try:
             self.processo_ativo = subprocess.Popen(
                 [
@@ -488,6 +490,9 @@ class Interface:
                     "--step",
                     str(self.pasta_experimento),
                     str(quantidade),
+                    config["tipo_crossover"],
+                    mut_param,
+                    config["tipo_selecao"],
                 ],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -685,24 +690,6 @@ def main() -> None:
     root = tk.Tk()
     app = Interface(root)
     root.mainloop()
-
-    # Limpeza limpa de arquivos locais residuais
-    pasta_local = Path(__file__).resolve().parent
-    for nome in (
-        "estado.dat",
-        "configuracao.json",
-        "historico.csv",
-        "cidades.csv",
-        "caixeiro",
-    ):
-        caminho_local = pasta_local / nome
-        if caminho_local.exists():
-            try:
-                caminho_local.unlink()
-            except OSError:
-                pass
-
-    sys.exit(0)
 
 
 if __name__ == "__main__":

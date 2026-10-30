@@ -3,6 +3,39 @@
 #include <filesystem>
 #include <iostream>
 
+namespace {
+std::unique_ptr<Crossover> criarCrossover(const std::string &nome) {
+  if (nome == "PMX")
+    return std::make_unique<CrossoverPMX>();
+  if (nome == "ERX")
+    return std::make_unique<CrossoverERX>();
+  if (nome == "Uniforme")
+    return std::make_unique<CrossoverUniforme>();
+  return std::make_unique<CrossoverOX>();
+}
+
+std::unique_ptr<Mutacao> criarMutacao(const std::string &nome) {
+  if (nome == "Troca")
+    return std::make_unique<MutacaoTroca>();
+  if (nome == "Inserção" || nome == "Insercao")
+    return std::make_unique<MutacaoInsercao>();
+  return std::make_unique<MutacaoInversao>();
+}
+
+std::unique_ptr<Selecao> criarSelecao(const std::string &nome) {
+  if (nome == "Roleta")
+    return std::make_unique<SelecaoRoleta>();
+  if (nome == "Ranking")
+    return std::make_unique<SelecaoRanking>();
+  if (nome == "Top Ranking" || nome == "TopRanking")
+    return std::make_unique<SelecaoTopRanking>(0.2);
+  if (nome == "Amostragem Estocástica" || nome == "AmostragemEstocastica" ||
+      nome == "SUS")
+    return std::make_unique<SelecaoAmostragemEstocastica>();
+  return std::make_unique<SelecaoTorneio>(4);
+}
+} // namespace
+
 int main(int argc, char **argv) {
   try {
     if (argc >= 9 && std::string(argv[1]) == "--start") {
@@ -19,48 +52,26 @@ int main(int argc, char **argv) {
       std::filesystem::remove(std::filesystem::path(pasta) / "historico.csv");
       Mundo mundo(cidades, pop, mut, maxEp, semMelh, cenario, pasta);
 
-      // Operadores opcionais passados via CLI (ex: --start ... OX Inversao
-      // Torneio)
       std::string crossNome = (argc > 9) ? argv[9] : "OX";
       std::string mutNome = (argc > 10) ? argv[10] : "Inversão";
       std::string selNome = (argc > 11) ? argv[11] : "Torneio";
 
-      std::unique_ptr<Crossover> cross;
-      if (crossNome == "PMX")
-        cross = std::make_unique<CrossoverPMX>();
-      else if (crossNome == "ERX")
-        cross = std::make_unique<CrossoverERX>();
-      else if (crossNome == "Uniforme")
-        cross = std::make_unique<CrossoverUniforme>();
-      else
-        cross = std::make_unique<CrossoverOX>();
-
-      std::unique_ptr<Mutacao> mutOp;
-      if (mutNome == "Troca")
-        mutOp = std::make_unique<MutacaoTroca>();
-      else if (mutNome == "Inserção")
-        mutOp = std::make_unique<MutacaoInsercao>();
-      else
-        mutOp = std::make_unique<MutacaoInversao>();
-
-      std::unique_ptr<Selecao> selOp;
-      if (selNome == "Roleta")
-        selOp = std::make_unique<SelecaoRoleta>();
-      else if (selNome == "Ranking")
-        selOp = std::make_unique<SelecaoRanking>();
-      else if (selNome == "Top Ranking")
-        selOp = std::make_unique<SelecaoTopRanking>(0.2);
-      else if (selNome == "Amostragem Estocástica")
-        selOp = std::make_unique<SelecaoAmostragemEstocastica>();
-      else
-        selOp = std::make_unique<SelecaoTorneio>(4);
-      mundo.definirOperadores(std::move(selOp), std::move(cross),
-                              std::move(mutOp));
+      mundo.definirOperadores(criarSelecao(selNome), criarCrossover(crossNome),
+                              criarMutacao(mutNome));
       std::cout << "Experimento iniciado na época 0.\n";
       return 0;
     }
-    if (argc == 4 && std::string(argv[1]) == "--step") {
+    if (argc >= 4 && std::string(argv[1]) == "--step") {
       Mundo mundo(argv[2]);
+
+      // Permite manter os operadores escolhidos se fornecidos via CLI
+      std::string crossNome = (argc > 4) ? argv[4] : "OX";
+      std::string mutNome = (argc > 5) ? argv[5] : "Inversão";
+      std::string selNome = (argc > 6) ? argv[6] : "Torneio";
+
+      mundo.definirOperadores(criarSelecao(selNome), criarCrossover(crossNome),
+                              criarMutacao(mutNome));
+
       mundo.avancar(std::stoi(argv[3]));
       std::cout << "Época atual: " << mundo.epocaAtual()
                 << (mundo.concluido() ? " (experimento concluído)" : "")
